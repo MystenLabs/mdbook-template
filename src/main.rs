@@ -4,6 +4,7 @@ use log::error;
 use mdbook::book::{Book, BookItem};
 use mdbook::errors::Error;
 use mdbook::preprocess::{CmdPreprocessor, Preprocessor, PreprocessorContext};
+use regex::Regex;
 use serde_json::Value as Json;
 use std::fs;
 use std::io;
@@ -53,10 +54,32 @@ impl Preprocessor for Template {
 
         // Render every chapter with Handlebars. Chapters without template tags pass through unchanged.
         let hbs = Handlebars::new();
+        // Regex to match ${{ ... }} patterns
+        let dollar_brace_re = Regex::new(r"\$\{\{.*?\}\}").unwrap();
+
         book.for_each_mut(|item| {
             if let BookItem::Chapter(ch) = item {
-                match hbs.render_template(&ch.content, &context) {
-                    Ok(rendered) => ch.content = rendered,
+                // Store all ${{ ... }} patterns and replace with placeholders
+                let mut protected_patterns = Vec::new();
+                let mut placeholder_idx = 0;
+
+                let protected_content = dollar_brace_re.replace_all(&ch.content, |caps: &regex::Captures| {
+                    let full_match = caps.get(0).unwrap().as_str();
+                    protected_patterns.push(full_match.to_string());
+                    let placeholder = format!("__PROTECTED_PATTERN_{}__", placeholder_idx);
+                    placeholder_idx += 1;
+                    placeholder
+                });
+
+                match hbs.render_template(&protected_content, &context) {
+                    Ok(mut rendered) => {
+                        // Restore all protected patterns
+                        for (idx, pattern) in protected_patterns.iter().enumerate() {
+                            let placeholder = format!("__PROTECTED_PATTERN_{}__", idx);
+                            rendered = rendered.replace(&placeholder, pattern);
+                        }
+                        ch.content = rendered;
+                    },
                     Err(e) => error!("Handlebars render error in {}: {}", ch.name, e),
                 }
             }
