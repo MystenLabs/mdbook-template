@@ -1181,6 +1181,7 @@ dependencies = [
  "handlebars 5.1.2",
  "log",
  "mdbook",
+ "regex",
  "serde",
  "serde_json",
  "walkdir",
